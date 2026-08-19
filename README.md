@@ -71,6 +71,16 @@ This Action has no GitHub Actions `outputs:` — results are files written to `o
 
 See [`docs/output-schema.md`](docs/output-schema.md) for field-level detail. Optional Reports API POST and job summary: [`docs/reports-api-client.md`](docs/reports-api-client.md).
 
+## Releasing
+
+From a clean `main` that matches `origin/main`:
+
+```bash
+./scripts/release.sh 1.0.1
+```
+
+That publishes GitHub Release `v1.0.1` and moves the `v1` tag so `Doubling-Open-Source/git-calculator-action@v1` picks up the patch.
+
 ## License
 
 [GNU General Public License v3.0](LICENSE).
