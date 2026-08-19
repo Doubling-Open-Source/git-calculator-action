@@ -55,7 +55,7 @@ fi
 git tag -a "$tag" -m "git-calculator-action ${version}"
 git push origin "$tag"
 
-git tag -f "$major_tag" "$tag"
+git tag -f "$major_tag" "$(git rev-parse "${tag}^{commit}")"
 git push origin "+refs/tags/${major_tag}"
 
 gh release create "$tag" --title "$version" --generate-notes --verify-tag
