@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from scope import ALL_BRANCHES, SQUASH
+from scope import ALL_BRANCHES, SQUASH, resolve_work_style
 
 
 def load_window_bounds(metadata: dict[str, Any]) -> tuple[str, str]:
@@ -73,7 +73,14 @@ def scope_selector(metadata: dict[str, Any]) -> list[str]:
     guessing ``--remotes=origin`` would turn that into a wrong "MISMATCH" rather
     than an honest "cannot check".
     """
-    style = metadata.get("work_style", ALL_BRANCHES)
+    raw = metadata.get("work_style", ALL_BRANCHES)
+    try:
+        style = resolve_work_style(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"window_metadata.json records unknown work_style {raw!r}; "
+            "this check cannot reproduce that population"
+        ) from exc
     if style == ALL_BRANCHES:
         return ["--remotes=origin"]
     if style == SQUASH:

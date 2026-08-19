@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import json
-import sqlite3
 import subprocess
 import sys
 import types
@@ -50,43 +49,25 @@ def _epoch(*args: int) -> float:
 
 
 def _mock_calculator(monkeypatch, *, commits, deltas) -> dict[str, Any]:
-    calls: dict[str, Any] = {}
+    calls: dict[str, Any] = {"classified_text": []}
 
     def git_log():
         return list(commits)
 
     class FakeLake:
-        def __init__(self, path: str | None = None) -> None:
-            self.conn = sqlite3.connect(":memory:")
-            self.conn.execute(
-                "CREATE TABLE commits ("
-                "sha TEXT, author_email TEXT, committed_date INTEGER, "
-                "_raw_data_params TEXT, message TEXT, log_ordinal INTEGER)"
-            )
-
         def load_logs(self, logs, repo_id: str) -> int:
             calls["delta_logs"] = list(logs)
-            self.conn.execute("DELETE FROM commits")
-            for ordinal, commit in enumerate(logs):
-                self.conn.execute(
-                    "INSERT INTO commits VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        commit[:],
-                        "",
-                        commit._when,
-                        repo_id,
-                        getattr(commit, "message", "") or None,
-                        ordinal,
-                    ),
-                )
-            self.conn.commit()
             return len(logs)
 
         def calculate_time_deltas_sql(self, repo_id: str | None = None):
             return [list(delta) for delta in deltas]
 
         def close(self) -> None:
-            self.conn.close()
+            return None
+
+    def text_has_change_failure_keyword(text: str) -> bool:
+        calls["classified_text"].append(text)
+        return "fix" in text.lower()
 
     git_ir = types.ModuleType("git_calculator.git_ir")
     git_ir.git_log = git_log
@@ -97,9 +78,7 @@ def _mock_calculator(monkeypatch, *, commits, deltas) -> dict[str, Any]:
     keywords = types.ModuleType(
         "git_calculator.calculators.sqlite_lake.commits_export_keywords"
     )
-    keywords.text_has_change_failure_keyword = lambda text: "fix" in text.lower()
-    work_style = types.ModuleType("git_calculator.work_style")
-    work_style.SQUASH = "squash"
+    keywords.text_has_change_failure_keyword = text_has_change_failure_keyword
     rates = types.ModuleType("git_calculator.calculators.change_failure_calculator")
     rates.calculate_change_failure_rate = lambda data: {
         key: round(fixes / total * 100, 1) if total else 0
@@ -116,7 +95,6 @@ def _mock_calculator(monkeypatch, *, commits, deltas) -> dict[str, Any]:
         "git_calculator.calculators.sqlite_lake.commits_export_keywords",
         keywords,
     )
-    monkeypatch.setitem(sys.modules, "git_calculator.work_style", work_style)
     monkeypatch.setitem(
         sys.modules, "git_calculator.calculators.change_failure_calculator", rates
     )
@@ -248,7 +226,10 @@ def test_runner_excludes_commits_outside_the_window(monkeypatch, tmp_path: Path)
     assert sum(row["cycle_time"]["samples"] for row in payload["series"]) == 1
 
 
-def test_squash_merge_is_applied_before_cycle_time_deltas(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("work_style", ["squash", "squash-merge"])
+def test_squash_styles_are_applied_before_cycle_time_deltas(
+    monkeypatch, tmp_path: Path, work_style: str
+) -> None:
     repo, on_main, on_feature = _two_branch_repo(tmp_path)
     when = _epoch(2026, 7, 1, 11, 0)
     commits = [
@@ -261,20 +242,20 @@ def test_squash_merge_is_applied_before_cycle_time_deltas(monkeypatch, tmp_path:
         commits=commits,
         deltas=[],
         window=_THREE_WEEK_WINDOW,
-        scope={"work_style": "squash", "scoped_ref": "main"},
+        scope={"work_style": work_style, "scoped_ref": "main"},
         repo=repo,
     )
     assert [sha[:] for sha in calls["delta_logs"]] == [on_main]
 
 
-def test_squash_does_not_count_a_body_only_fix_keyword(monkeypatch, tmp_path: Path) -> None:
+def test_squash_classifies_from_the_commit_summary_only(monkeypatch, tmp_path: Path) -> None:
     commits = [
         _Commit(
             _epoch(2026, 6, 30, 10, 0),
             "feat: login\n\nfix leftover from stacked commits",
         )
     ]
-    out, _ = _run(
+    _, calls = _run(
         monkeypatch,
         tmp_path,
         commits=commits,
@@ -282,19 +263,17 @@ def test_squash_does_not_count_a_body_only_fix_keyword(monkeypatch, tmp_path: Pa
         window=_THREE_WEEK_WINDOW,
         scope={"work_style": "squash", "scoped_ref": None},
     )
-    with (out / "commit_volume.csv").open(newline="", encoding="utf-8") as handle:
-        busy = next(row for row in csv.DictReader(handle) if row["commits"] == "1")
-    assert busy["error"] == "0"
+    assert calls["classified_text"] == ["feat: login"]
 
 
-def test_all_branches_counts_a_body_fix_keyword(monkeypatch, tmp_path: Path) -> None:
+def test_all_branches_classifies_from_the_full_message(monkeypatch, tmp_path: Path) -> None:
     commits = [
         _Commit(
             _epoch(2026, 6, 30, 10, 0),
             "feat: login\n\nfix leftover from stacked commits",
         )
     ]
-    out, _ = _run(
+    _, calls = _run(
         monkeypatch,
         tmp_path,
         commits=commits,
@@ -302,9 +281,7 @@ def test_all_branches_counts_a_body_fix_keyword(monkeypatch, tmp_path: Path) -> 
         window=_THREE_WEEK_WINDOW,
         scope={"work_style": "all-branches", "scoped_ref": None},
     )
-    with (out / "commit_volume.csv").open(newline="", encoding="utf-8") as handle:
-        busy = next(row for row in csv.DictReader(handle) if row["commits"] == "1")
-    assert busy["error"] == "1"
+    assert calls["classified_text"] == ["feat: login\n\nfix leftover from stacked commits"]
 
 
 def test_silent_week_does_not_invent_a_change_failure_rate(monkeypatch, tmp_path: Path) -> None:

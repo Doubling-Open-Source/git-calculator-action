@@ -67,7 +67,7 @@ def resolve_span_bounds(window: dict[str, Any], *, timestamps: list[float]) -> t
 def weekly_change_failure_counts(
     logs_by_week: dict[str, list[Any]], *, is_fix: Callable[[Any], bool]
 ) -> dict[str, tuple[int, int]]:
-    """Per-week ``(total_commits, fix_commits)`` using the lake's keyword flags."""
+    """Per-week ``(total_commits, fix_commits)`` from the Action's classifier."""
     counts: dict[str, tuple[int, int]] = {}
     for week, commits in logs_by_week.items():
         total = len(commits)
@@ -90,20 +90,18 @@ def default_calculator_runner(
 
     Must never import or call author-level analyzers.
 
-    Uses the pinned calculator's SQL lake for cycle-time deltas and for the
-    fix-commit keyword flags, then does the ISO-week bucketing, unit
-    normalisation, and summarisation here. The pin's own charts bucket by
-    calendar month; re-pinning is not the place to fix a reporting-grain
-    decision.
+    Uses the pinned calculator's SQL lake for cycle-time deltas, then does the
+    ISO-week bucketing, unit normalisation, and summarisation here. Change-failure
+    classification is applied here to the Action-owned commit list: squash uses
+    the summary line only so a stacked "fix" in a squash-merge body does not
+    flag the merge. The pin's own charts bucket by calendar month; re-pinning
+    is not the place to fix a reporting-grain decision.
 
     Branch scope is applied here because this Action still owns
     ``default-branch`` resolution. ``git_log()`` returns every ref; squash
     then keeps commits reachable from the resolved default branch. ``scope``
     arrives already resolved (see ``scope.resolve_scope``) so a ref that does
-    not exist has already ended the run before this point. Under squash,
-    change-failure scans the commit summary only -- the engine's squash
-    style -- so a stacked "fix" in a squash-merge body does not flag the
-    merge.
+    not exist has already ended the run before this point.
     """
     # Imported here, not at module scope: this is the only function that runs
     # the calculator, and keeping them local leaves the rest of the module (and
@@ -125,31 +123,27 @@ def default_calculator_runner(
         )
         from git_calculator.git_ir import git_log
         from git_calculator.util.git_util import get_repo_id
-        from git_calculator.work_style import SQUASH as ENGINE_SQUASH
 
         logging.getLogger().setLevel(logging.WARNING)
 
         every_commit = git_log()
         resolved_scope = scope or {"work_style": ALL_BRANCHES, "scoped_ref": None}
         logs = scope_commits(every_commit, repo=repo_path, scope=resolved_scope)
-        engine_style = ENGINE_SQUASH if resolved_scope["work_style"] == SQUASH else ALL_BRANCHES
 
         lake = SqliteLake()
         try:
             repo_id = get_repo_id()
             lake.load_logs(logs, repo_id)
             all_deltas = lake.calculate_time_deltas_sql(repo_id)
-            fix_by_sha: dict[str, bool] = {}
-            for sha, message in lake.conn.execute(
-                "SELECT sha, message FROM commits WHERE _raw_data_params = ?",
-                (repo_id,),
-            ):
-                text = message or ""
-                if engine_style == ENGINE_SQUASH:
-                    text = text.split("\n", 1)[0]
-                fix_by_sha[sha] = bool(text) and text_has_change_failure_keyword(text)
         finally:
             lake.close()
+
+        fix_by_sha: dict[str, bool] = {}
+        for commit in logs:
+            text = getattr(commit, "message", "") or ""
+            if resolved_scope["work_style"] == SQUASH:
+                text = text.split("\n", 1)[0]
+            fix_by_sha[commit[:]] = bool(text) and text_has_change_failure_keyword(text)
 
         start, end = resolve_span_bounds(window, timestamps=[log._when for log in logs])
         start_ts, end_ts = start.timestamp(), end.timestamp()
