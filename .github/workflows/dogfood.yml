@@ -1,0 +1,46 @@
+name: git-calculator dogfood
+
+# Product path: Mondays 00:00 UTC → trailing eight complete ISO weeks
+# (window ends at that Monday midnight; in-progress week excluded).
+# No pull_request or workflow_dispatch — Action unit tests live in
+# unit.yml. Local remote-count verify: verify_window_counts.py (not
+# wired into this weekly job).
+#
+# Calculate + upload artifact. Optional Reports API POST when
+# GIT_CALCULATOR_API_KEY is set.
+on:
+  schedule:
+    - cron: "0 0 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  calculate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout history only
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          # Prefer blobless when available on the runner/action version:
+          # filter: blob:none
+
+      # Ensure every origin branch tip is present so metrics cover the
+      # remote-wide ref set, not only the default checkout tip.
+      - name: Fetch all origin branches
+        run: git fetch origin --prune '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Run git-calculator Action
+        uses: ./
+        with:
+          output-dir: git-calculator-output
+        env:
+          GIT_CALCULATOR_API_KEY: ${{ secrets.GIT_CALCULATOR_API_KEY }}
+
+      - name: Upload gated artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: git-calculator-bundle
+          path: git-calculator-output
+          if-no-files-found: error

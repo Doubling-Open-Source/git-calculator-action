@@ -1,0 +1,220 @@
+name: git-calculator
+description: Calculate allowlisted aggregated DORA-style metrics from local git history and fail closed on extras.
+inputs:
+  output-dir:
+    description: Directory for the gated metrics bundle
+    required: false
+    default: git-calculator-output
+  repository-path:
+    description: Path to the git repository under analysis
+    required: false
+    default: ${{ github.workspace }}
+  calculator-remote:
+    description: git remote URL for the calculator source pin
+    required: false
+    default: https://github.com/Doubling-Open-Source/git_calculator
+  calculator-ref:
+    description: Full commit SHA (or tag) of the calculator pin
+    required: false
+    default: bfb23134d741a32e6e80da40d9a325c24b7080b6
+  window-weeks:
+    description: >-
+      Trailing whole ISO weeks covered by a scheduled run. The default
+      window ends at the start of the current ISO week (UTC), so the
+      in-progress week is excluded and consecutive runs neither gap nor
+      overlap. Ignored when an explicit window or full-history override
+      is set.
+    required: false
+    default: "8"
+  window-start:
+    description: >-
+      Explicit ISO-8601 UTC window start for a one-off dispatch override
+      (requires window-end; leave empty for the default trailing window).
+    required: false
+    default: ""
+  window-end:
+    description: >-
+      Explicit ISO-8601 UTC window end for a one-off dispatch override
+      (requires window-start; leave empty for the default trailing window).
+    required: false
+    default: ""
+  full-history:
+    description: >-
+      Set to "true" to analyze full available history for one dispatch
+      instead of the default trailing window. Not the product default
+      cadence -- setup, backfill, and debugging only.
+    required: false
+    default: "false"
+  work-style:
+    description: >-
+      Which commits count. "all-branches" (default) counts every branch,
+      for repositories whose branches stay in history. "squash-merge"
+      counts only commits reachable from the default branch, for
+      repositories that collapse each branch into one commit on merge.
+      Any other value fails the step. This selects the commit population
+      before the analysis window slices it.
+    required: false
+    default: all-branches
+  default-branch:
+    description: >-
+      Ref whose reachable commits are the population under
+      work-style "squash-merge". Leave empty to detect it
+      (refs/remotes/origin/HEAD, then origin/main, origin/master, the
+      local equivalents, then HEAD). A named ref that does not resolve
+      fails the step rather than falling back to a guess. Ignored under
+      work-style "all-branches".
+    required: false
+    default: ""
+  reports-api-key:
+    description: >-
+      Optional Reports API key (secret). When empty, uses env
+      GIT_CALCULATOR_API_KEY from the Action step (typically
+      secrets.GIT_CALCULATOR_API_KEY). When that is also empty, skip
+      writing weekly_metrics.json and skip the POST. Detected without
+      persisting the secret. setup-python, clone, pip, and calculate
+      do not receive it. Materialized only for the POST. Never logged.
+    required: false
+    default: ""
+  reports-api-url:
+    description: >-
+      Reports API base URL. Defaults to https://gitcalculator.doubling.io.
+      Override must be https with a host. Other URLs fail the step,
+      including when no key is set.
+    required: false
+    default: https://gitcalculator.doubling.io
+  reports-api-repo:
+    description: >-
+      Repo string posted to the API. Defaults to github.repository.
+      Override for local runs whose github.repository does not match
+      the key.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    # v7: node24. v5 still declares node20 and warns on post cleanup.
+    - name: Detect Reports API key
+      id: reports_key
+      shell: bash
+      env:
+        REPORTS_API_KEY_INPUT: ${{ inputs.reports-api-key }}
+      run: |
+        set -euo pipefail
+        present="$(python3 "${GITHUB_ACTION_PATH}/reports_key.py" --input "${REPORTS_API_KEY_INPUT:-}" --present)"
+        echo "present=${present}" >> "${GITHUB_OUTPUT}"
+
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      env:
+        GIT_CALCULATOR_API_KEY: ""
+        REPORTS_API_KEY_INPUT: ""
+        INPUT_REPORTS_API_KEY: ""
+      with:
+        python-version: "3.11"
+
+    - name: Obtain pinned git_calculator
+      id: obtain-calculator
+      shell: bash
+      env:
+        CALC_REMOTE: ${{ inputs.calculator-remote }}
+        CALC_REF: ${{ inputs.calculator-ref }}
+        GIT_CALCULATOR_API_KEY: ""
+        REPORTS_API_KEY_INPUT: ""
+        INPUT_REPORTS_API_KEY: ""
+      run: |
+        set -euo pipefail
+        src="$(mktemp -d "${RUNNER_TEMP}/git_calculator_src.XXXXXX")"
+        git clone --depth 1 "${CALC_REMOTE}" "${src}"
+        git -C "${src}" fetch --depth 1 origin "${CALC_REF}"
+        git -C "${src}" checkout "${CALC_REF}"
+        if [[ -f "${src}/requirements.txt" ]]; then
+          pip install -r "${src}/requirements.txt"
+        fi
+        echo "src=${src}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run calculator + allowlist gate
+      shell: bash
+      env:
+        CALC_REMOTE: ${{ inputs.calculator-remote }}
+        CALC_REF: ${{ inputs.calculator-ref }}
+        CALC_SRC: ${{ steps.obtain-calculator.outputs.src }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        REPO_PATH: ${{ inputs.repository-path }}
+        WINDOW_WEEKS: ${{ inputs.window-weeks }}
+        WINDOW_START: ${{ inputs.window-start }}
+        WINDOW_END: ${{ inputs.window-end }}
+        FULL_HISTORY: ${{ inputs.full-history }}
+        WORK_STYLE: ${{ inputs.work-style }}
+        DEFAULT_BRANCH: ${{ inputs.default-branch }}
+        WRITE_WEEKLY_METRICS_JSON: ${{ steps.reports_key.outputs.present }}
+        GIT_CALCULATOR_API_KEY: ""
+        REPORTS_API_KEY_INPUT: ""
+        INPUT_REPORTS_API_KEY: ""
+      run: |
+        set -euo pipefail
+        ACTION_DIR="${GITHUB_ACTION_PATH}"
+        export PYTHONPATH="${ACTION_DIR}"
+        args=(
+          --repo "${REPO_PATH}"
+          --output-dir "${OUTPUT_DIR}"
+          --calculator-src "${CALC_SRC}"
+          --calculator-remote "${CALC_REMOTE}"
+          --calculator-ref "${CALC_REF}"
+          --allowlist "${ACTION_DIR}/allowlist.json"
+        )
+        if [[ -n "${WINDOW_WEEKS}" ]]; then
+          args+=(--window-weeks "${WINDOW_WEEKS}")
+        fi
+        if [[ -n "${WINDOW_START}" ]]; then
+          args+=(--window-start "${WINDOW_START}")
+        fi
+        if [[ -n "${WINDOW_END}" ]]; then
+          args+=(--window-end "${WINDOW_END}")
+        fi
+        if [[ "${FULL_HISTORY}" == "true" ]]; then
+          args+=(--full-history)
+        fi
+        if [[ -n "${WORK_STYLE}" ]]; then
+          args+=(--work-style "${WORK_STYLE}")
+        fi
+        if [[ -n "${DEFAULT_BRANCH}" ]]; then
+          args+=(--default-branch "${DEFAULT_BRANCH}")
+        fi
+        if [[ "${WRITE_WEEKLY_METRICS_JSON}" == "true" ]]; then
+          args+=(--write-weekly-metrics-json)
+        fi
+        python "${ACTION_DIR}/run.py" "${args[@]}"
+
+    - name: Optionally post to Reports API
+      shell: bash
+      env:
+        REPORTS_API_URL: ${{ inputs.reports-api-url }}
+        REPORTS_API_REPO: ${{ inputs.reports-api-repo }}
+        REPORTS_API_KEY_INPUT: ${{ inputs.reports-api-key }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        HAS_REPORTS_API_KEY: ${{ steps.reports_key.outputs.present }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${REPORTS_API_URL}" ]]; then
+          echo "reports-api-url is empty" >&2
+          exit 1
+        fi
+        python "${GITHUB_ACTION_PATH}/post_reports.py" --check-url --url "${REPORTS_API_URL}"
+        if [[ "${HAS_REPORTS_API_KEY}" != "true" ]]; then
+          echo "No Reports API key; skipping POST"
+          exit 0
+        fi
+        umask 077
+        key_file="$(mktemp)"
+        cleanup() {
+          rm -f "${key_file}"
+        }
+        trap cleanup EXIT
+        python3 "${GITHUB_ACTION_PATH}/reports_key.py" --input "${REPORTS_API_KEY_INPUT:-}" --write-file "${key_file}"
+        chmod 600 "${key_file}"
+        repo="${REPORTS_API_REPO:-${GITHUB_REPOSITORY}}"
+        python "${GITHUB_ACTION_PATH}/post_reports.py" \
+          --url "${REPORTS_API_URL}" \
+          --key-file "${key_file}" \
+          --repo "${repo}" \
+          --metrics-file "${OUTPUT_DIR}/weekly_metrics.json"

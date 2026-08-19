@@ -1,0 +1,9 @@
+# Local Python dev/test artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+junit.xml
+mutants/
+.venv/
+node_modules/
+docs/_build/

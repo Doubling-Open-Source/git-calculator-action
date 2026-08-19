@@ -1,0 +1,43 @@
+name: git-calculator unit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Check run for the unit-test tree (dorny/test-reporter).
+      checks: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Run Action unit tests
+        run: PYTHONPATH=. pytest tests -q --junitxml=junit.xml
+
+      - name: Unit test results
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+        with:
+          name: Unit tests
+          path: junit.xml
+          reporter: java-junit
+          list-suites: all
+          list-tests: all
+          fail-on-error: "false"
+          use-actions-summary: "true"
+          report-title: Unit tests

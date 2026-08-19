@@ -1,0 +1,9 @@
+{
+  "patterns": [
+    "window_metadata.json",
+    "commit_volume.csv",
+    "weekly_metrics.json",
+    "cycle_time.csv",
+    "change_failure_rate.csv"
+  ]
+}
