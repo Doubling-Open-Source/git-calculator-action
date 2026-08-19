@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sqlite3
 import subprocess
 import sys
 import types
@@ -54,39 +55,71 @@ def _mock_calculator(monkeypatch, *, commits, deltas) -> dict[str, Any]:
     def git_log():
         return list(commits)
 
-    def calculate_time_deltas(logs):
-        calls["delta_logs"] = list(logs)
-        return [list(delta) for delta in deltas]
+    class FakeLake:
+        def __init__(self, path: str | None = None) -> None:
+            self.conn = sqlite3.connect(":memory:")
+            self.conn.execute(
+                "CREATE TABLE commits ("
+                "sha TEXT, author_email TEXT, committed_date INTEGER, "
+                "_raw_data_params TEXT, message TEXT, log_ordinal INTEGER)"
+            )
 
-    def extract_commit_data(logs):
-        calls.setdefault("change_failure_logs", []).extend(logs)
-        by_month: dict[str, tuple[int, int]] = {}
-        for commit in logs:
-            stamp = datetime.fromtimestamp(commit._when, tz=timezone.utc)
-            key = f"{stamp.year}-{stamp.month:02d}"
-            total, fixes = by_month.get(key, (0, 0))
-            hit = "fix" in commit.message.lower()
-            by_month[key] = (total + 1, fixes + (1 if hit else 0))
-        return by_month
+        def load_logs(self, logs, repo_id: str) -> int:
+            calls["delta_logs"] = list(logs)
+            self.conn.execute("DELETE FROM commits")
+            for ordinal, commit in enumerate(logs):
+                self.conn.execute(
+                    "INSERT INTO commits VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        commit[:],
+                        "",
+                        commit._when,
+                        repo_id,
+                        getattr(commit, "message", "") or None,
+                        ordinal,
+                    ),
+                )
+            self.conn.commit()
+            return len(logs)
 
-    def calculate_change_failure_rate(data):
-        return {
-            key: round(fixes / total * 100, 1) if total else 0
-            for key, (total, fixes) in data.items()
-        }
+        def calculate_time_deltas_sql(self, repo_id: str | None = None):
+            return [list(delta) for delta in deltas]
 
-    git_ir = types.ModuleType("src.git_ir")
+        def close(self) -> None:
+            self.conn.close()
+
+    git_ir = types.ModuleType("git_calculator.git_ir")
     git_ir.git_log = git_log
-    cycle = types.ModuleType("src.calculators.cycle_time_by_commits_calculator")
-    cycle.calculate_time_deltas = calculate_time_deltas
-    failure = types.ModuleType("src.calculators.change_failure_calculator")
-    failure.extract_commit_data = extract_commit_data
-    failure.calculate_change_failure_rate = calculate_change_failure_rate
-    monkeypatch.setitem(sys.modules, "src", types.ModuleType("src"))
-    monkeypatch.setitem(sys.modules, "src.git_ir", git_ir)
-    monkeypatch.setitem(sys.modules, "src.calculators", types.ModuleType("src.calculators"))
-    monkeypatch.setitem(sys.modules, "src.calculators.cycle_time_by_commits_calculator", cycle)
-    monkeypatch.setitem(sys.modules, "src.calculators.change_failure_calculator", failure)
+    lake_mod = types.ModuleType("git_calculator.calculators.sqlite_lake")
+    lake_mod.SqliteLake = FakeLake
+    util = types.ModuleType("git_calculator.util.git_util")
+    util.get_repo_id = lambda: "local:test"
+    keywords = types.ModuleType(
+        "git_calculator.calculators.sqlite_lake.commits_export_keywords"
+    )
+    keywords.text_has_change_failure_keyword = lambda text: "fix" in text.lower()
+    work_style = types.ModuleType("git_calculator.work_style")
+    work_style.SQUASH = "squash"
+    rates = types.ModuleType("git_calculator.calculators.change_failure_calculator")
+    rates.calculate_change_failure_rate = lambda data: {
+        key: round(fixes / total * 100, 1) if total else 0
+        for key, (total, fixes) in data.items()
+    }
+    monkeypatch.setitem(sys.modules, "git_calculator", types.ModuleType("git_calculator"))
+    monkeypatch.setitem(sys.modules, "git_calculator.git_ir", git_ir)
+    monkeypatch.setitem(sys.modules, "git_calculator.util", types.ModuleType("git_calculator.util"))
+    monkeypatch.setitem(sys.modules, "git_calculator.util.git_util", util)
+    monkeypatch.setitem(sys.modules, "git_calculator.calculators", types.ModuleType("git_calculator.calculators"))
+    monkeypatch.setitem(sys.modules, "git_calculator.calculators.sqlite_lake", lake_mod)
+    monkeypatch.setitem(
+        sys.modules,
+        "git_calculator.calculators.sqlite_lake.commits_export_keywords",
+        keywords,
+    )
+    monkeypatch.setitem(sys.modules, "git_calculator.work_style", work_style)
+    monkeypatch.setitem(
+        sys.modules, "git_calculator.calculators.change_failure_calculator", rates
+    )
     return calls
 
 
@@ -228,10 +261,50 @@ def test_squash_merge_is_applied_before_cycle_time_deltas(monkeypatch, tmp_path:
         commits=commits,
         deltas=[],
         window=_THREE_WEEK_WINDOW,
-        scope={"work_style": "squash-merge", "scoped_ref": "main"},
+        scope={"work_style": "squash", "scoped_ref": "main"},
         repo=repo,
     )
     assert [sha[:] for sha in calls["delta_logs"]] == [on_main]
+
+
+def test_squash_does_not_count_a_body_only_fix_keyword(monkeypatch, tmp_path: Path) -> None:
+    commits = [
+        _Commit(
+            _epoch(2026, 6, 30, 10, 0),
+            "feat: login\n\nfix leftover from stacked commits",
+        )
+    ]
+    out, _ = _run(
+        monkeypatch,
+        tmp_path,
+        commits=commits,
+        deltas=[],
+        window=_THREE_WEEK_WINDOW,
+        scope={"work_style": "squash", "scoped_ref": None},
+    )
+    with (out / "commit_volume.csv").open(newline="", encoding="utf-8") as handle:
+        busy = next(row for row in csv.DictReader(handle) if row["commits"] == "1")
+    assert busy["error"] == "0"
+
+
+def test_all_branches_counts_a_body_fix_keyword(monkeypatch, tmp_path: Path) -> None:
+    commits = [
+        _Commit(
+            _epoch(2026, 6, 30, 10, 0),
+            "feat: login\n\nfix leftover from stacked commits",
+        )
+    ]
+    out, _ = _run(
+        monkeypatch,
+        tmp_path,
+        commits=commits,
+        deltas=[],
+        window=_THREE_WEEK_WINDOW,
+        scope={"work_style": "all-branches", "scoped_ref": None},
+    )
+    with (out / "commit_volume.csv").open(newline="", encoding="utf-8") as handle:
+        busy = next(row for row in csv.DictReader(handle) if row["commits"] == "1")
+    assert busy["error"] == "1"
 
 
 def test_silent_week_does_not_invent_a_change_failure_rate(monkeypatch, tmp_path: Path) -> None:

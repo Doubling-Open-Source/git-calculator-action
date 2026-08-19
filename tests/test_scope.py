@@ -43,6 +43,11 @@ def test_unknown_work_style_fails_closed() -> None:
         resolve_work_style("main-only")
 
 
+def test_squash_merge_alias_canonicalizes_to_engine_squash() -> None:
+    assert resolve_work_style("squash") == "squash"
+    assert resolve_work_style("squash-merge") == "squash"
+
+
 def test_named_default_branch_that_does_not_resolve_fails_closed(tmp_path: Path) -> None:
     repo, _, _ = _two_branch_repo(tmp_path)
     with pytest.raises(RuntimeError, match="does not resolve to a commit"):

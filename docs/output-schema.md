@@ -16,8 +16,8 @@ Every instant is RFC3339 UTC with an explicit `Z` (e.g. `2026-08-06T16:53:04Z`).
 | --- | --- |
 | `generated_at` | When this ran. |
 | `analyzed_window_start` / `analyzed_window_end` | What period the rows actually cover, derived from the emitted rows. |
-| `work_style` | Which commits count: `all-branches` or `squash-merge` (see `work-style` input). |
-| `scoped_ref` | Under `squash-merge`, the resolved ref whose reachable commits were counted. `null` under `all-branches`. |
+| `work_style` | Which commits count: `all-branches` or `squash` (`squash-merge` is stored as `squash`; see `work-style` input). |
+| `scoped_ref` | Under `squash`, the resolved ref whose reachable commits were counted. `null` under `all-branches`. |
 
 ## Every week gets a row
 

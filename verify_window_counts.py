@@ -9,7 +9,7 @@ Exit 0 when the totals match; exit 1 on mismatch or missing inputs.
 
 ``<refs>`` is not fixed: it follows the ``work_style`` the bundle records, so the
 check counts the same population the bundle reports. Counting all of origin
-against a ``squash-merge`` bundle would report a mismatch on every run and train
+against a ``squash`` bundle would report a mismatch on every run and train
 readers to ignore the one check that is supposed to catch a real drift.
 """
 
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from scope import ALL_BRANCHES, SQUASH_MERGE
+from scope import ALL_BRANCHES, SQUASH
 
 
 def load_window_bounds(metadata: dict[str, Any]) -> tuple[str, str]:
@@ -76,11 +76,11 @@ def scope_selector(metadata: dict[str, Any]) -> list[str]:
     style = metadata.get("work_style", ALL_BRANCHES)
     if style == ALL_BRANCHES:
         return ["--remotes=origin"]
-    if style == SQUASH_MERGE:
+    if style == SQUASH:
         ref = metadata.get("scoped_ref")
         if not ref:
             raise ValueError(
-                "window_metadata.json records work_style 'squash-merge' without a scoped_ref, "
+                "window_metadata.json records work_style 'squash' without a scoped_ref, "
                 "so the population it counted cannot be reproduced"
             )
         return [str(ref)]

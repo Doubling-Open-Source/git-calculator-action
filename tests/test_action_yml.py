@@ -16,6 +16,7 @@ _REPORTS_API_EMPTY_DEFAULTS = (
 )
 
 _DEFAULT_REPORTS_API_URL = "https://gitcalculator.doubling.io"
+_DEFAULT_CALCULATOR_REF = "fb8c70756ab5d55f5fb3b91962685b00b5975ea3"
 
 _INPUT_NAME = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 _FIELD = re.compile(r"^    ([A-Za-z0-9_-]+):\s*(.*)$")
@@ -76,6 +77,14 @@ def test_action_yml_defaults_reports_api_url_to_gitcalculator_host(
     spec = action_inputs["reports-api-url"]
     assert spec.get("required") == "false"
     assert spec["default"] == _DEFAULT_REPORTS_API_URL
+
+
+def test_action_yml_defaults_calculator_ref_to_v2_1_0_commit(
+    action_inputs: dict[str, dict[str, str]],
+) -> None:
+    spec = action_inputs["calculator-ref"]
+    assert spec.get("required") == "false"
+    assert spec["default"] == _DEFAULT_CALCULATOR_REF
 
 
 def _step_bodies(text: str) -> dict[str, str]:
