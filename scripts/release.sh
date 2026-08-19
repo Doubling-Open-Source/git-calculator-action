@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Cut a GitHub Action release from a clean, up-to-date main.
 # Usage: ./scripts/release.sh 1.0.1
+# Maintainer docs: docs/developer/releasing.md
 set -euo pipefail
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -ne 1 ]]; then
