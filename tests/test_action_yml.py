@@ -101,10 +101,19 @@ def test_action_yml_has_no_separate_identity_token_input(
     assert "reports-api-identity-token" not in action_inputs
 
 
+def test_action_yml_defaults_write_weekly_metrics_json_to_false(
+    action_inputs: dict[str, dict[str, str]],
+) -> None:
+    spec = action_inputs["write-weekly-metrics-json"]
+    assert spec.get("required") == "false"
+    assert spec["default"] == '"false"'
+
+
 def test_action_yml_does_not_skip_post_when_only_the_env_var_is_set() -> None:
     text = _ACTION_YML.read_text(encoding="utf-8")
     assert "if: ${{ inputs.reports-api-key != '' }}" not in text
     assert "WRITE_WEEKLY_METRICS_JSON: ${{ inputs.reports-api-key != '' }}" not in text
+    assert "WRITE_WEEKLY_METRICS_JSON: ${{ steps.reports_key.outputs.present }}" not in text
 
 
 def test_action_yml_does_not_persist_a_secret_wipe_via_github_env() -> None:
@@ -147,11 +156,20 @@ def test_action_yml_post_inherits_the_caller_key_and_writes_weekly_metrics_from_
     steps = _step_bodies(text)
     calculate = steps["Run calculator + allowlist gate"]
     post = steps["Optionally post to Reports API"]
-    assert "steps.reports_key.outputs.present" in calculate
+    assert "WRITE_WEEKLY_METRICS_JSON: ${{ inputs.write-weekly-metrics-json }}" in calculate
+    assert "HAS_REPORTS_API_KEY: ${{ steps.reports_key.outputs.present }}" in calculate
     assert "git-calculator-reports-api-key" not in calculate
     assert 'GIT_CALCULATOR_API_KEY: ""' not in post
     assert "REPORTS_API_KEY_INPUT: ${{ inputs.reports-api-key }}" in post
     assert "mktemp" in post
+
+
+def test_run_step_writes_weekly_metrics_json_when_input_or_key_is_present() -> None:
+    run_script = _composite_step_run("Run calculator + allowlist gate")
+    assert (
+        '[[ "${WRITE_WEEKLY_METRICS_JSON}" == "true" || "${HAS_REPORTS_API_KEY}" == "true" ]]'
+        in run_script
+    )
 
 
 def _composite_step_run(step_name: str) -> str:

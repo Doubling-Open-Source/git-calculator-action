@@ -54,7 +54,8 @@ jobs:
 | `full-history` | `false` | Analyze full available history for one dispatch instead of the default trailing window. For setup, backfill, and debugging — not the scheduled default. |
 | `work-style` | `all-branches` | Which commits count. `all-branches` counts every branch. `squash-merge` counts only commits reachable from the default branch, for repositories that collapse each branch into one commit on merge. Any other value fails the step. This selects the commit population before the analysis window slices it. |
 | `default-branch` | (none) | Ref whose reachable commits are the population under `work-style: squash-merge`. Leave empty to auto-detect (`refs/remotes/origin/HEAD`, then `origin/main`, `origin/master`, then `HEAD`). A named ref that does not resolve fails the step rather than falling back to a guess. Ignored under `all-branches`. |
-| `reports-api-key` | (none) | Optional override. Prefer step env `GIT_CALCULATOR_API_KEY`. Empty input and empty env skip writing `weekly_metrics.json` and the POST. |
+| `write-weekly-metrics-json` | `false` | Set to `true` to write `weekly_metrics.json` even when no Reports API credential is set. When a credential is present, the file is written anyway — this input is not required. Does not POST by itself. |
+| `reports-api-key` | (none) | Optional override. Prefer step env `GIT_CALCULATOR_API_KEY`. Empty input and empty env skip the POST. |
 
 ## Outputs
 
@@ -66,7 +67,7 @@ This Action has no GitHub Actions `outputs:` — results are files written to `o
 | `commit_volume.csv` | Weekly commit counts and how many of those commits were errors. |
 | `cycle_time.csv` | Weekly cycle time. |
 | `change_failure_rate.csv` | Weekly change failure rate. |
-| `weekly_metrics.json` | Reports API payload. Written only when `GIT_CALCULATOR_API_KEY` or `reports-api-key` is set. |
+| `weekly_metrics.json` | Reports API payload. Written when `GIT_CALCULATOR_API_KEY` or `reports-api-key` is set, or when `write-weekly-metrics-json` is `true`. |
 
 See [`docs/output-schema.md`](docs/output-schema.md) for field-level detail. Optional Reports API POST and job summary: [`docs/reports-api-client.md`](docs/reports-api-client.md).
 
