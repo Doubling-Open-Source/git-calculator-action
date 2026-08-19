@@ -65,12 +65,20 @@ inputs:
       work-style "all-branches".
     required: false
     default: ""
+  write-weekly-metrics-json:
+    description: >-
+      Set to "true" to write weekly_metrics.json even when no Reports
+      API credential is set. When a credential is present, the file is
+      written anyway — this input is not required. Does not POST by
+      itself.
+    required: false
+    default: "false"
   reports-api-key:
     description: >-
       Optional Reports API key (secret). When empty, uses env
       GIT_CALCULATOR_API_KEY from the Action step (typically
       secrets.GIT_CALCULATOR_API_KEY). When that is also empty, skip
-      writing weekly_metrics.json and skip the POST. Detected without
+      the POST. Detected without
       persisting the secret. setup-python, clone, pip, and calculate
       do not receive it. Materialized only for the POST. Never logged.
     required: false
@@ -146,7 +154,8 @@ runs:
         FULL_HISTORY: ${{ inputs.full-history }}
         WORK_STYLE: ${{ inputs.work-style }}
         DEFAULT_BRANCH: ${{ inputs.default-branch }}
-        WRITE_WEEKLY_METRICS_JSON: ${{ steps.reports_key.outputs.present }}
+        WRITE_WEEKLY_METRICS_JSON: ${{ inputs.write-weekly-metrics-json }}
+        HAS_REPORTS_API_KEY: ${{ steps.reports_key.outputs.present }}
         GIT_CALCULATOR_API_KEY: ""
         REPORTS_API_KEY_INPUT: ""
         INPUT_REPORTS_API_KEY: ""
@@ -180,7 +189,7 @@ runs:
         if [[ -n "${DEFAULT_BRANCH}" ]]; then
           args+=(--default-branch "${DEFAULT_BRANCH}")
         fi
-        if [[ "${WRITE_WEEKLY_METRICS_JSON}" == "true" ]]; then
+        if [[ "${WRITE_WEEKLY_METRICS_JSON}" == "true" || "${HAS_REPORTS_API_KEY}" == "true" ]]; then
           args+=(--write-weekly-metrics-json)
         fi
         python "${ACTION_DIR}/run.py" "${args[@]}"

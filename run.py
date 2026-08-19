@@ -210,8 +210,8 @@ def write_weekly_outputs(
 ) -> None:
     """Write the standardized bundle: three CSVs on one grain, plus window metadata.
 
-    ``weekly_metrics.json`` is only written when a Reports API key is set -- it
-    is the POST body, not the default artifact. All three CSVs lead with the
+    ``weekly_metrics.json`` is written only when ``write_weekly_metrics_json``
+    is set -- it is the POST body, not the default artifact. All three CSVs lead with the
     same ``week,week_start,week_end`` columns, so they join without a lookup
     table. Every file here must have a matching pattern in ``allowlist.json``
     -- the gate runs after this and fails closed on anything it does not
@@ -357,7 +357,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--write-weekly-metrics-json",
         action="store_true",
-        help="Write weekly_metrics.json (Reports API POST body). Off unless a key is set.",
+        help="Write weekly_metrics.json (Reports API POST body). Off unless requested.",
     )
     args = parser.parse_args(argv)
     run_pipeline(
