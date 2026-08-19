@@ -49,44 +49,55 @@ def _epoch(*args: int) -> float:
 
 
 def _mock_calculator(monkeypatch, *, commits, deltas) -> dict[str, Any]:
-    calls: dict[str, Any] = {}
+    calls: dict[str, Any] = {"classified_text": []}
 
     def git_log():
         return list(commits)
 
-    def calculate_time_deltas(logs):
-        calls["delta_logs"] = list(logs)
-        return [list(delta) for delta in deltas]
+    class FakeLake:
+        def load_logs(self, logs, repo_id: str) -> int:
+            calls["delta_logs"] = list(logs)
+            return len(logs)
 
-    def extract_commit_data(logs):
-        calls.setdefault("change_failure_logs", []).extend(logs)
-        by_month: dict[str, tuple[int, int]] = {}
-        for commit in logs:
-            stamp = datetime.fromtimestamp(commit._when, tz=timezone.utc)
-            key = f"{stamp.year}-{stamp.month:02d}"
-            total, fixes = by_month.get(key, (0, 0))
-            hit = "fix" in commit.message.lower()
-            by_month[key] = (total + 1, fixes + (1 if hit else 0))
-        return by_month
+        def calculate_time_deltas_sql(self, repo_id: str | None = None):
+            return [list(delta) for delta in deltas]
 
-    def calculate_change_failure_rate(data):
-        return {
-            key: round(fixes / total * 100, 1) if total else 0
-            for key, (total, fixes) in data.items()
-        }
+        def close(self) -> None:
+            return None
 
-    git_ir = types.ModuleType("src.git_ir")
+    def text_has_change_failure_keyword(text: str) -> bool:
+        calls["classified_text"].append(text)
+        return "fix" in text.lower()
+
+    git_ir = types.ModuleType("git_calculator.git_ir")
     git_ir.git_log = git_log
-    cycle = types.ModuleType("src.calculators.cycle_time_by_commits_calculator")
-    cycle.calculate_time_deltas = calculate_time_deltas
-    failure = types.ModuleType("src.calculators.change_failure_calculator")
-    failure.extract_commit_data = extract_commit_data
-    failure.calculate_change_failure_rate = calculate_change_failure_rate
-    monkeypatch.setitem(sys.modules, "src", types.ModuleType("src"))
-    monkeypatch.setitem(sys.modules, "src.git_ir", git_ir)
-    monkeypatch.setitem(sys.modules, "src.calculators", types.ModuleType("src.calculators"))
-    monkeypatch.setitem(sys.modules, "src.calculators.cycle_time_by_commits_calculator", cycle)
-    monkeypatch.setitem(sys.modules, "src.calculators.change_failure_calculator", failure)
+    lake_mod = types.ModuleType("git_calculator.calculators.sqlite_lake")
+    lake_mod.SqliteLake = FakeLake
+    util = types.ModuleType("git_calculator.util.git_util")
+    util.get_repo_id = lambda: "local:test"
+    keywords = types.ModuleType(
+        "git_calculator.calculators.sqlite_lake.commits_export_keywords"
+    )
+    keywords.text_has_change_failure_keyword = text_has_change_failure_keyword
+    rates = types.ModuleType("git_calculator.calculators.change_failure_calculator")
+    rates.calculate_change_failure_rate = lambda data: {
+        key: round(fixes / total * 100, 1) if total else 0
+        for key, (total, fixes) in data.items()
+    }
+    monkeypatch.setitem(sys.modules, "git_calculator", types.ModuleType("git_calculator"))
+    monkeypatch.setitem(sys.modules, "git_calculator.git_ir", git_ir)
+    monkeypatch.setitem(sys.modules, "git_calculator.util", types.ModuleType("git_calculator.util"))
+    monkeypatch.setitem(sys.modules, "git_calculator.util.git_util", util)
+    monkeypatch.setitem(sys.modules, "git_calculator.calculators", types.ModuleType("git_calculator.calculators"))
+    monkeypatch.setitem(sys.modules, "git_calculator.calculators.sqlite_lake", lake_mod)
+    monkeypatch.setitem(
+        sys.modules,
+        "git_calculator.calculators.sqlite_lake.commits_export_keywords",
+        keywords,
+    )
+    monkeypatch.setitem(
+        sys.modules, "git_calculator.calculators.change_failure_calculator", rates
+    )
     return calls
 
 
@@ -215,7 +226,10 @@ def test_runner_excludes_commits_outside_the_window(monkeypatch, tmp_path: Path)
     assert sum(row["cycle_time"]["samples"] for row in payload["series"]) == 1
 
 
-def test_squash_merge_is_applied_before_cycle_time_deltas(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("work_style", ["squash", "squash-merge"])
+def test_squash_styles_are_applied_before_cycle_time_deltas(
+    monkeypatch, tmp_path: Path, work_style: str
+) -> None:
     repo, on_main, on_feature = _two_branch_repo(tmp_path)
     when = _epoch(2026, 7, 1, 11, 0)
     commits = [
@@ -228,10 +242,46 @@ def test_squash_merge_is_applied_before_cycle_time_deltas(monkeypatch, tmp_path:
         commits=commits,
         deltas=[],
         window=_THREE_WEEK_WINDOW,
-        scope={"work_style": "squash-merge", "scoped_ref": "main"},
+        scope={"work_style": work_style, "scoped_ref": "main"},
         repo=repo,
     )
     assert [sha[:] for sha in calls["delta_logs"]] == [on_main]
+
+
+def test_squash_classifies_from_the_commit_summary_only(monkeypatch, tmp_path: Path) -> None:
+    commits = [
+        _Commit(
+            _epoch(2026, 6, 30, 10, 0),
+            "feat: login\n\nfix leftover from stacked commits",
+        )
+    ]
+    _, calls = _run(
+        monkeypatch,
+        tmp_path,
+        commits=commits,
+        deltas=[],
+        window=_THREE_WEEK_WINDOW,
+        scope={"work_style": "squash", "scoped_ref": None},
+    )
+    assert calls["classified_text"] == ["feat: login"]
+
+
+def test_all_branches_classifies_from_the_full_message(monkeypatch, tmp_path: Path) -> None:
+    commits = [
+        _Commit(
+            _epoch(2026, 6, 30, 10, 0),
+            "feat: login\n\nfix leftover from stacked commits",
+        )
+    ]
+    _, calls = _run(
+        monkeypatch,
+        tmp_path,
+        commits=commits,
+        deltas=[],
+        window=_THREE_WEEK_WINDOW,
+        scope={"work_style": "all-branches", "scoped_ref": None},
+    )
+    assert calls["classified_text"] == ["feat: login\n\nfix leftover from stacked commits"]
 
 
 def test_silent_week_does_not_invent_a_change_failure_rate(monkeypatch, tmp_path: Path) -> None:

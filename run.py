@@ -12,6 +12,8 @@ from gate import gate_output_dir
 from scope import (
     ALL_BRANCHES,
     DEFAULT_WORK_STYLE,
+    SQUASH,
+    SQUASH_MERGE,
     WORK_STYLES,
     resolve_scope,
     resolve_work_style,
@@ -62,20 +64,14 @@ def resolve_span_bounds(window: dict[str, Any], *, timestamps: list[float]) -> t
     return earliest, latest
 
 
-def weekly_change_failure_counts(logs_by_week: dict[str, list[Any]], *, extract_commit_data: Any) -> dict[str, tuple[int, int]]:
-    """Per-week ``(total_commits, fix_commits)`` using the calculator's own classifier.
-
-    ``extract_commit_data`` buckets internally by calendar month and returns a
-    month-keyed mapping, so it is called once per *week* of commits and its
-    month buckets summed back together. That keeps the fix-keyword heuristic --
-    the part carrying real domain meaning, and the part we must not fork --
-    exactly as pinned, while the grain decision stays here.
-    """
+def weekly_change_failure_counts(
+    logs_by_week: dict[str, list[Any]], *, is_fix: Callable[[Any], bool]
+) -> dict[str, tuple[int, int]]:
+    """Per-week ``(total_commits, fix_commits)`` from the Action's classifier."""
     counts: dict[str, tuple[int, int]] = {}
     for week, commits in logs_by_week.items():
-        by_month = extract_commit_data(commits)
-        total = sum(total for total, _ in by_month.values())
-        fixes = sum(fixes for _, fixes in by_month.values())
+        total = len(commits)
+        fixes = sum(1 for commit in commits if is_fix(commit))
         counts[week] = (total, fixes)
     return counts
 
@@ -94,18 +90,18 @@ def default_calculator_runner(
 
     Must never import or call author-level analyzers.
 
-    Uses the pinned calculator for the two things that encode its domain
-    judgement -- the per-author consecutive-commit cycle-time definition and
-    the fix-commit keyword classifier -- and does the bucketing, unit
-    normalisation, and summarisation here. The pin only knows how to bucket by
-    calendar month or by commit count, and re-pinning is not the place to fix a
-    reporting-grain decision.
+    Uses the pinned calculator's SQL lake for cycle-time deltas, then does the
+    ISO-week bucketing, unit normalisation, and summarisation here. Change-failure
+    classification is applied here to the Action-owned commit list: squash uses
+    the summary line only so a stacked "fix" in a squash-merge body does not
+    flag the merge. The pin's own charts bucket by calendar month; re-pinning
+    is not the place to fix a reporting-grain decision.
 
-    Branch scope is applied here for the same reason: the pin reads history with
-    ``git log --all --reflog`` and takes no ref argument, so the work style
-    filters what it returns. ``scope`` arrives already resolved (see
-    ``scope.resolve_scope``) so a ref that does not exist has already ended the
-    run before this point.
+    Branch scope is applied here because this Action still owns
+    ``default-branch`` resolution. ``git_log()`` returns every ref; squash
+    then keeps commits reachable from the resolved default branch. ``scope``
+    arrives already resolved (see ``scope.resolve_scope``) so a ref that does
+    not exist has already ended the run before this point.
     """
     # Imported here, not at module scope: this is the only function that runs
     # the calculator, and keeping them local leaves the rest of the module (and
@@ -120,33 +116,35 @@ def default_calculator_runner(
     original_cwd = os.getcwd()
     os.chdir(repo_path)
     try:
-        from src.git_ir import git_log
-        from src.calculators.cycle_time_by_commits_calculator import calculate_time_deltas
-        from src.calculators.change_failure_calculator import extract_commit_data, calculate_change_failure_rate
+        from git_calculator.calculators.change_failure_calculator import calculate_change_failure_rate
+        from git_calculator.calculators.sqlite_lake import SqliteLake
+        from git_calculator.calculators.sqlite_lake.commits_export_keywords import (
+            text_has_change_failure_keyword,
+        )
+        from git_calculator.git_ir import git_log
+        from git_calculator.util.git_util import get_repo_id
 
-        # Those modules call logging.basicConfig(level=DEBUG) at import time and
-        # log every commit object they touch. On a client-sized repo that buries
-        # the run's actual output in tens of MB of commit dumps, so turn it down
-        # once the handler exists. Warnings and errors still come through.
         logging.getLogger().setLevel(logging.WARNING)
 
         every_commit = git_log()
-
-        # Scope before deltas, window after. The work style decides which
-        # commits are work at all under this repo's merge convention, so it
-        # defines the population every later step measures; the window then
-        # slices that population by time. Scoping after the deltas were computed
-        # would measure an author's cycle time against a predecessor the report
-        # does not count -- on a squash-merge repo, against the scratch commits
-        # the squash superseded, which is the reading this input exists to fix.
         resolved_scope = scope or {"work_style": ALL_BRANCHES, "scoped_ref": None}
         logs = scope_commits(every_commit, repo=repo_path, scope=resolved_scope)
 
-        # Deltas come from *full* (in-scope) history, then get filtered by their
-        # own timestamp. Filtering commits by time first would silently drop each
-        # author's earliest in-window delta (it has no predecessor left to
-        # measure against), which biases the first week of every window.
-        all_deltas = calculate_time_deltas(logs)
+        lake = SqliteLake()
+        try:
+            repo_id = get_repo_id()
+            lake.load_logs(logs, repo_id)
+            all_deltas = lake.calculate_time_deltas_sql(repo_id)
+        finally:
+            lake.close()
+
+        fix_by_sha: dict[str, bool] = {}
+        for commit in logs:
+            text = getattr(commit, "message", "") or ""
+            if resolved_scope["work_style"] == SQUASH:
+                text = text.split("\n", 1)[0]
+            fix_by_sha[commit[:]] = bool(text) and text_has_change_failure_keyword(text)
+
         start, end = resolve_span_bounds(window, timestamps=[log._when for log in logs])
         start_ts, end_ts = start.timestamp(), end.timestamp()
 
@@ -170,10 +168,8 @@ def default_calculator_runner(
 
         counts = weekly_change_failure_counts(
             bucket_by_week(commits_in_window, when=lambda commit: commit._when),
-            extract_commit_data=extract_commit_data,
+            is_fix=lambda commit: fix_by_sha.get(commit[:], False),
         )
-        # calculate_change_failure_rate is key-agnostic -- it divides fixes by
-        # total per key -- so week keys pass through it unchanged.
         rates = calculate_change_failure_rate(counts)
 
         series = build_weekly_series(
@@ -343,14 +339,16 @@ def main(argv: list[str] | None = None) -> None:
         help=(
             "Which commits count: "
             f"{' | '.join(WORK_STYLES)} (default {DEFAULT_WORK_STYLE}). "
-            "squash-merge counts only commits reachable from the default branch."
+            f"{SQUASH} counts only commits reachable from the default branch "
+            "and scores change-failure from the commit summary. "
+            f"{SQUASH_MERGE} is an alias of {SQUASH}."
         ),
     )
     parser.add_argument(
         "--default-branch",
         default=None,
         help=(
-            "Ref whose reachable commits are the population under squash-merge; "
+            "Ref whose reachable commits are the population under squash; "
             "omit to detect it. A ref that does not resolve fails the run."
         ),
     )

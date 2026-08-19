@@ -18,12 +18,16 @@ from pathlib import Path
 from typing import Any, Sequence
 
 ALL_BRANCHES = "all-branches"
+SQUASH = "squash"
 SQUASH_MERGE = "squash-merge"
 
-#: Accepted ``work-style`` values. Anything else fails closed rather than
-#: falling back to a default -- a typo'd style would otherwise silently report
-#: the wrong population, which is the one failure mode nobody would notice.
-WORK_STYLES = (ALL_BRANCHES, SQUASH_MERGE)
+#: Accepted ``work-style`` values. ``squash-merge`` is kept as an alias of
+#: ``squash`` so existing workflows keep working after the engine named the
+#: style ``squash``. Anything else fails closed rather than falling back to a
+#: default -- a typo'd style would otherwise silently report the wrong
+#: population, which is the one failure mode nobody would notice.
+WORK_STYLES = (ALL_BRANCHES, SQUASH)
+_WORK_STYLE_ALIASES = {SQUASH_MERGE: SQUASH}
 
 DEFAULT_WORK_STYLE = ALL_BRANCHES
 
@@ -38,11 +42,13 @@ def resolve_work_style(value: str | None) -> str:
     """Validate a ``work-style`` input, treating empty/unset as the default."""
     if value is None or value == "":
         return DEFAULT_WORK_STYLE
-    if value not in WORK_STYLES:
+    canonical = _WORK_STYLE_ALIASES.get(value, value)
+    if canonical not in WORK_STYLES:
         raise ValueError(
-            f"unknown work-style {value!r}; expected one of {', '.join(WORK_STYLES)}"
+            f"unknown work-style {value!r}; expected one of {', '.join(WORK_STYLES)} "
+            f"(or alias {SQUASH_MERGE})"
         )
-    return value
+    return canonical
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -72,7 +78,7 @@ def _resolves_to_commit(repo: Path, ref: str) -> bool:
 
 
 def resolve_default_branch(repo: Path, *, explicit: str | None = None) -> str:
-    """The ref whose reachable commits are the ``squash-merge`` population.
+    """The ref whose reachable commits are the ``squash`` population.
 
     An explicit input is honoured or rejected -- never quietly replaced by a
     guess, because a caller who named a ref is asserting something about the
@@ -102,7 +108,7 @@ def resolve_default_branch(repo: Path, *, explicit: str | None = None) -> str:
             return ref
 
     raise RuntimeError(
-        "could not resolve a default branch for the squash-merge work style; tried "
+        "could not resolve a default branch for the squash work style; tried "
         f"{', '.join(candidates)}. Set the default-branch input explicitly."
     )
 
@@ -136,7 +142,7 @@ def resolve_scope(
     if work_style == ALL_BRANCHES:
         return {"work_style": ALL_BRANCHES, "scoped_ref": None}
     return {
-        "work_style": work_style,
+        "work_style": SQUASH,
         "scoped_ref": resolve_default_branch(repo, explicit=default_branch),
     }
 

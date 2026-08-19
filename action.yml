@@ -14,9 +14,13 @@ inputs:
     required: false
     default: https://github.com/Doubling-Open-Source/git_calculator
   calculator-ref:
-    description: Full commit SHA (or tag) of the calculator pin
+    description: >-
+      Full commit SHA of the calculator pin. Tags are accepted as
+      overrides, but the default is a commit SHA because tags can move.
+      Default is git_calculator v2.1.0
+      (fb8c70756ab5d55f5fb3b91962685b00b5975ea3).
     required: false
-    default: bfb23134d741a32e6e80da40d9a325c24b7080b6
+    default: fb8c70756ab5d55f5fb3b91962685b00b5975ea3
   window-weeks:
     description: >-
       Trailing whole ISO weeks covered by a scheduled run. The default
@@ -48,17 +52,19 @@ inputs:
   work-style:
     description: >-
       Which commits count. "all-branches" (default) counts every branch,
-      for repositories whose branches stay in history. "squash-merge"
-      counts only commits reachable from the default branch, for
-      repositories that collapse each branch into one commit on merge.
-      Any other value fails the step. This selects the commit population
-      before the analysis window slices it.
+      for repositories whose branches stay in history. "squash"
+      counts only commits reachable from the default branch and scores
+      change-failure from the commit summary, for repositories that
+      collapse each branch into one commit on merge. "squash-merge" is
+      accepted as an alias of "squash". Any other value fails the step.
+      This selects the commit population before the analysis window
+      slices it.
     required: false
     default: all-branches
   default-branch:
     description: >-
       Ref whose reachable commits are the population under
-      work-style "squash-merge". Leave empty to detect it
+      work-style "squash". Leave empty to detect it
       (refs/remotes/origin/HEAD, then origin/main, origin/master, the
       local equivalents, then HEAD). A named ref that does not resolve
       fails the step rather than falling back to a guess. Ignored under
@@ -131,11 +137,14 @@ runs:
         INPUT_REPORTS_API_KEY: ""
       run: |
         set -euo pipefail
+        # Default calculator-ref is the v2.1.0 peeled commit. The tag can move; that SHA cannot.
         src="$(mktemp -d "${RUNNER_TEMP}/git_calculator_src.XXXXXX")"
         git clone --depth 1 "${CALC_REMOTE}" "${src}"
         git -C "${src}" fetch --depth 1 origin "${CALC_REF}"
         git -C "${src}" checkout "${CALC_REF}"
-        if [[ -f "${src}/requirements.txt" ]]; then
+        if [[ -f "${src}/pyproject.toml" ]]; then
+          pip install "${src}"
+        elif [[ -f "${src}/requirements.txt" ]]; then
           pip install -r "${src}/requirements.txt"
         fi
         echo "src=${src}" >> "${GITHUB_OUTPUT}"

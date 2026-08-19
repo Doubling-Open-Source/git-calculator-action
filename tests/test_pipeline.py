@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,9 +25,20 @@ def _stub_with_leak(*, repo_path: Path, output_dir: Path, window: dict) -> None:
     (output_dir / "commit_bob_commits.csv").write_text("bad\n", encoding="utf-8")
 
 
-def _run(tmp_path: Path, **kwargs):
+def _git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "--allow-empty", "-m", "on main"], cwd=repo, check=True)
+    return repo
+
+
+def _run(tmp_path: Path, *, repo: Path | None = None, **kwargs):
+    if repo is None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
     kwargs.setdefault("calculator_runner", _stub)
     return run_pipeline(
         repo_path=repo,
@@ -66,3 +79,13 @@ def test_pipeline_rejects_full_history_with_explicit_bounds(tmp_path: Path) -> N
             window_start="2026-01-01T00:00:00Z",
             window_end="2026-02-01T00:00:00Z",
         )
+
+
+@pytest.mark.parametrize("work_style", ["squash", "squash-merge"])
+def test_pipeline_records_canonical_squash_for_both_work_style_inputs(
+    tmp_path: Path, work_style: str
+) -> None:
+    _run(tmp_path, repo=_git_repo(tmp_path), work_style=work_style)
+    metadata = json.loads((tmp_path / "out" / "window_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["work_style"] == "squash"
+    assert metadata["scoped_ref"]
