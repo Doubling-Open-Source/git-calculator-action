@@ -1,10 +1,11 @@
 # Optional Reports API client
 
 This is the maintainer path for testing a live POST. Consumers of the
-Action do not need it: with no key the Action writes the three CSVs and
-`window_metadata.json` only.
+Action do not need it: with no credential the Action writes the three CSVs and
+`window_metadata.json` only, unless `write-weekly-metrics-json` is `true`
+(JSON without a POST).
 
-When a key is set, the Action also writes `weekly_metrics.json` and POSTs
+When a credential is set, the Action also writes `weekly_metrics.json` and POSTs
 it.
 
 GitHub will not inject a repository secret unless the workflow maps it.
@@ -58,6 +59,7 @@ or host, either point `GIT_CALCULATOR_API_KEY` at that secret or pass
 
 | Name | Default | Description |
 | --- | --- | --- |
+| `write-weekly-metrics-json` | `false` | Set to `true` to write `weekly_metrics.json` even when no Reports API credential is set. When a credential is present, the file is written anyway. Does not POST by itself. |
 | `reports-api-key` | (none) | Optional override of the same identity as step env `GIT_CALCULATOR_API_KEY`. When both are empty, skip the POST. Never logged. |
 | `reports-api-url` | `https://gitcalculator.doubling.io` | Reports API base URL. Override must be `https` with a host (local emulator included). Any other value fails the step, including when the POST is skipped. |
 | `reports-api-repo` | `github.repository` | Repo string posted to the API. Override for local runs whose `github.repository` does not match the key. |

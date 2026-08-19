@@ -37,7 +37,7 @@ Three files, one per metric, same `week` key: `commit_volume.csv` (`commits`, `e
 
 ## `weekly_metrics.json`
 
-Written only when a Reports API key is set (the POST body). Not part of the default artifact.
+Written when a Reports API credential is set, or when `write-weekly-metrics-json` is `true` (the POST body when posting). Not part of the default artifact.
 
 ```jsonc
 {
