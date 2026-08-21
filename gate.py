@@ -29,7 +29,10 @@ def is_allowed(rel_path: str, patterns: list[str]) -> bool:
 
 def gate_output_dir(output_dir: Path, allowlist_path: Path) -> None:
     if not output_dir.is_dir():
-        print(f"gate: output dir missing or not a directory: {output_dir}", file=sys.stderr)
+        print(
+            f"gate: output dir missing or not a directory: {output_dir}",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
     patterns = load_allowlist(allowlist_path)
     rels = collect_relative_paths(output_dir)
@@ -42,7 +45,9 @@ def gate_output_dir(output_dir: Path, allowlist_path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Fail closed if output dir has non-allowlisted files")
+    parser = argparse.ArgumentParser(
+        description="Fail closed if output dir has non-allowlisted files"
+    )
     parser.add_argument("output_dir", type=Path)
     parser.add_argument(
         "--allowlist",

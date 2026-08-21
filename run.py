@@ -30,7 +30,12 @@ from weekly import (
     iso_week_start,
     week_spans,
 )
-from window import DEFAULT_WINDOW_WEEKS, analyzed_window, resolve_window, write_window_metadata
+from window import (
+    DEFAULT_WINDOW_WEEKS,
+    analyzed_window,
+    resolve_window,
+    write_window_metadata,
+)
 
 CalculatorRunner = Callable[..., None]
 
@@ -39,7 +44,9 @@ def _instant(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def resolve_span_bounds(window: dict[str, Any], *, timestamps: list[float]) -> tuple[datetime, datetime]:
+def resolve_span_bounds(
+    window: dict[str, Any], *, timestamps: list[float]
+) -> tuple[datetime, datetime]:
     """The ``[start, end)`` the weekly rows should cover.
 
     A bounded window (scheduled default or manual override) states its own
@@ -57,10 +64,14 @@ def resolve_span_bounds(window: dict[str, Any], *, timestamps: list[float]) -> t
         return _instant(window["window_start"]), _instant(window["window_end"])
 
     if not timestamps:
-        raise RuntimeError("full history requested but the repository has no commits to analyze")
+        raise RuntimeError(
+            "full history requested but the repository has no commits to analyze"
+        )
 
     earliest = iso_week_start(datetime.fromtimestamp(min(timestamps), tz=timezone.utc))
-    latest = iso_week_start(datetime.fromtimestamp(max(timestamps), tz=timezone.utc)) + WEEK
+    latest = (
+        iso_week_start(datetime.fromtimestamp(max(timestamps), tz=timezone.utc)) + WEEK
+    )
     return earliest, latest
 
 
@@ -116,7 +127,9 @@ def default_calculator_runner(
     original_cwd = os.getcwd()
     os.chdir(repo_path)
     try:
-        from git_calculator.calculators.change_failure_calculator import calculate_change_failure_rate
+        from git_calculator.calculators.change_failure_calculator import (
+            calculate_change_failure_rate,
+        )
         from git_calculator.calculators.sqlite_lake import SqliteLake
         from git_calculator.calculators.sqlite_lake.commits_export_keywords import (
             text_has_change_failure_keyword,
@@ -177,7 +190,9 @@ def default_calculator_runner(
             # window can legitimately extend past now (full history rounds up to
             # the week holding the newest commit), and it is real time that
             # decides whether a week has finished.
-            spans=week_spans(start=start, end=end, now=_instant(window["generated_at"])),
+            spans=week_spans(
+                start=start, end=end, now=_instant(window["generated_at"])
+            ),
             deltas=deltas,
             commits_by_week=counts,
             rates_by_week=rates,
@@ -215,9 +230,13 @@ def write_weekly_outputs(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    (output_dir / "commit_volume.csv").write_text(commit_volume_csv(series), encoding="utf-8")
+    (output_dir / "commit_volume.csv").write_text(
+        commit_volume_csv(series), encoding="utf-8"
+    )
     (output_dir / "cycle_time.csv").write_text(cycle_time_csv(series), encoding="utf-8")
-    (output_dir / "change_failure_rate.csv").write_text(change_failure_rate_csv(series), encoding="utf-8")
+    (output_dir / "change_failure_rate.csv").write_text(
+        change_failure_rate_csv(series), encoding="utf-8"
+    )
 
     # The rows exist now, so the bundle can state its true coverage. Rewritten
     # into window_metadata.json rather than left to the reader to infer, and

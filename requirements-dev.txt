@@ -1,1 +1,2 @@
 pytest>=8.0,<9
+pre-commit>=4.0,<5

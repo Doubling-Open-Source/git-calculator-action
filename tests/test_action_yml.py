@@ -122,7 +122,10 @@ def test_action_yml_does_not_skip_post_when_only_the_env_var_is_set() -> None:
     text = _ACTION_YML.read_text(encoding="utf-8")
     assert "if: ${{ inputs.reports-api-key != '' }}" not in text
     assert "WRITE_WEEKLY_METRICS_JSON: ${{ inputs.reports-api-key != '' }}" not in text
-    assert "WRITE_WEEKLY_METRICS_JSON: ${{ steps.reports_key.outputs.present }}" not in text
+    assert (
+        "WRITE_WEEKLY_METRICS_JSON: ${{ steps.reports_key.outputs.present }}"
+        not in text
+    )
 
 
 def test_action_yml_does_not_persist_a_secret_wipe_via_github_env() -> None:
@@ -160,12 +163,17 @@ def test_action_yml_withholds_secrets_from_untrusted_steps() -> None:
             assert blank in body, f"{name} must withhold {blank}"
 
 
-def test_action_yml_post_inherits_the_caller_key_and_writes_weekly_metrics_from_presence() -> None:
+def test_action_yml_post_inherits_the_caller_key_and_writes_weekly_metrics_from_presence() -> (
+    None
+):
     text = _ACTION_YML.read_text(encoding="utf-8")
     steps = _step_bodies(text)
     calculate = steps["Run calculator + allowlist gate"]
     post = steps["Optionally post to Reports API"]
-    assert "WRITE_WEEKLY_METRICS_JSON: ${{ inputs.write-weekly-metrics-json }}" in calculate
+    assert (
+        "WRITE_WEEKLY_METRICS_JSON: ${{ inputs.write-weekly-metrics-json }}"
+        in calculate
+    )
     assert "HAS_REPORTS_API_KEY: ${{ steps.reports_key.outputs.present }}" in calculate
     assert "git-calculator-reports-api-key" not in calculate
     assert 'GIT_CALCULATOR_API_KEY: ""' not in post
@@ -255,7 +263,9 @@ def test_obtain_step_can_run_twice_in_one_job(tmp_path: Path) -> None:
         )
         output_text = github_output.read_text(encoding="utf-8")
         match = re.search(r"^src=(.+)$", output_text, re.MULTILINE)
-        assert match, f"obtain step {i + 1} did not write src= to GITHUB_OUTPUT:\n{output_text}"
+        assert match, (
+            f"obtain step {i + 1} did not write src= to GITHUB_OUTPUT:\n{output_text}"
+        )
         srcs.append(Path(match.group(1)))
     assert srcs[0] != srcs[1]
     assert srcs[0].is_dir() and srcs[1].is_dir()
@@ -271,9 +281,13 @@ def _run_post_step(*, has_key: str, url: str) -> subprocess.CompletedProcess[str
         "REPORTS_API_REPO": "",
         "OUTPUT_DIR": "unused",
         "GITHUB_ACTION_PATH": str(Path(__file__).resolve().parents[1]),
-        "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
+        "PATH": str(Path(sys.executable).parent)
+        + os.pathsep
+        + os.environ.get("PATH", ""),
     }
-    return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+    return subprocess.run(
+        ["bash", "-c", script], env=env, capture_output=True, text=True
+    )
 
 
 def test_post_step_rejects_http_url_even_without_a_key() -> None:

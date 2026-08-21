@@ -38,11 +38,15 @@ def _parse_instant(value: str, *, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValueError(f"{label} is not a valid ISO-8601 timestamp: {value!r}") from exc
+        raise ValueError(
+            f"{label} is not a valid ISO-8601 timestamp: {value!r}"
+        ) from exc
     return _normalize_utc(parsed)
 
 
-def trailing_weeks_window(*, now: datetime | None = None, weeks: int = DEFAULT_WINDOW_WEEKS) -> dict[str, Any]:
+def trailing_weeks_window(
+    *, now: datetime | None = None, weeks: int = DEFAULT_WINDOW_WEEKS
+) -> dict[str, Any]:
     """The scheduled default: ``weeks`` whole ISO weeks, ending at this week's Monday.
 
     This settles the alignment question that ``analysis-windows.md`` left open
@@ -140,7 +144,9 @@ def resolve_window(
 
     if has_start or has_end:
         if not (has_start and has_end):
-            raise ValueError("window_start and window_end must both be provided together")
+            raise ValueError(
+                "window_start and window_end must both be provided together"
+            )
         requested_start = _parse_instant(window_start, label="window_start")
         requested_end = _parse_instant(window_end, label="window_end")
         if requested_start >= requested_end:
@@ -200,5 +206,7 @@ def analyzed_window(series: Sequence[dict[str, Any]]) -> dict[str, str]:
 def write_window_metadata(output_dir: Path, metadata: dict[str, Any]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "window_metadata.json"
-    path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return path

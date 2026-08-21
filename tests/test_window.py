@@ -7,9 +7,15 @@ import pytest
 from window import resolve_window
 
 
-def test_trailing_window_excludes_the_in_progress_week_and_consecutive_runs_abut() -> None:
-    earlier = resolve_window(now=datetime(2026, 7, 15, 6, 0, 0, tzinfo=timezone.utc), weeks=1)
-    later = resolve_window(now=datetime(2026, 7, 22, 18, 30, 0, tzinfo=timezone.utc), weeks=1)
+def test_trailing_window_excludes_the_in_progress_week_and_consecutive_runs_abut() -> (
+    None
+):
+    earlier = resolve_window(
+        now=datetime(2026, 7, 15, 6, 0, 0, tzinfo=timezone.utc), weeks=1
+    )
+    later = resolve_window(
+        now=datetime(2026, 7, 22, 18, 30, 0, tzinfo=timezone.utc), weeks=1
+    )
     assert earlier["window_end"] == "2026-07-13T00:00:00Z"
     assert later["window_end"] == "2026-07-20T00:00:00Z"
     assert earlier["window_end"] == later["window_start"]
@@ -27,7 +33,9 @@ def test_explicit_override_rounds_down_and_keeps_what_was_requested() -> None:
 
 
 def test_full_history_omits_window_bounds() -> None:
-    meta = resolve_window(full_history=True, now=datetime(2026, 8, 6, tzinfo=timezone.utc))
+    meta = resolve_window(
+        full_history=True, now=datetime(2026, 8, 6, tzinfo=timezone.utc)
+    )
     assert meta["mode"] == "full_history"
     assert "window_start" not in meta
     assert "window_end" not in meta

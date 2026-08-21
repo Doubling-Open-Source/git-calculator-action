@@ -51,7 +51,9 @@ def resolve_work_style(value: str | None) -> str:
     return canonical
 
 
-def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _git(
+    repo: Path, *args: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     """Run git in ``repo``, raising ``RuntimeError`` rather than leaking git's own.
 
     ``CalledProcessError`` would escape ``run.py``'s ``(RuntimeError, ValueError)``
@@ -72,7 +74,9 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
 
 def _resolves_to_commit(repo: Path, ref: str) -> bool:
     return (
-        _git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False).returncode
+        _git(
+            repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False
+        ).returncode
         == 0
     )
 
@@ -98,7 +102,9 @@ def resolve_default_branch(repo: Path, *, explicit: str | None = None) -> str:
         return explicit
 
     candidates: list[str] = []
-    symbolic = _git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD", check=False)
+    symbolic = _git(
+        repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD", check=False
+    )
     if symbolic.returncode == 0 and symbolic.stdout.strip():
         candidates.append(symbolic.stdout.strip())
     candidates.extend(DEFAULT_BRANCH_CANDIDATES)
@@ -147,7 +153,9 @@ def resolve_scope(
     }
 
 
-def scope_commits(commits: Sequence[Any], *, repo: Path, scope: dict[str, Any]) -> list[Any]:
+def scope_commits(
+    commits: Sequence[Any], *, repo: Path, scope: dict[str, Any]
+) -> list[Any]:
     """Restrict ``commits`` to the population ``scope`` describes.
 
     The membership test compares the commit objects themselves. They are

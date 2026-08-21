@@ -40,7 +40,11 @@ MIN_STDDEV_SAMPLES = 2
 
 def iso_week_start(moment: datetime) -> datetime:
     """Monday 00:00:00 UTC of the ISO week containing ``moment``."""
-    utc = moment.astimezone(timezone.utc) if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    utc = (
+        moment.astimezone(timezone.utc)
+        if moment.tzinfo
+        else moment.replace(tzinfo=timezone.utc)
+    )
     midnight = utc.replace(hour=0, minute=0, second=0, microsecond=0)
     return midnight - timedelta(days=midnight.weekday())
 
@@ -73,7 +77,9 @@ def days_elapsed(week_start: datetime, week_end: datetime, *, now: datetime) -> 
     return round((now - week_start).total_seconds() / 86400, 1)
 
 
-def week_spans(*, start: datetime, end: datetime, now: datetime) -> list[dict[str, Any]]:
+def week_spans(
+    *, start: datetime, end: datetime, now: datetime
+) -> list[dict[str, Any]]:
     """Every ISO week in the half-open window ``[start, end)``.
 
     Callers must pass week-aligned bounds; every window mode rounds down to a
@@ -117,7 +123,9 @@ def week_spans(*, start: datetime, end: datetime, now: datetime) -> list[dict[st
     return spans
 
 
-def bucket_by_week(items: Iterable[Any], *, when: Callable[[Any], float]) -> dict[str, list[Any]]:
+def bucket_by_week(
+    items: Iterable[Any], *, when: Callable[[Any], float]
+) -> dict[str, list[Any]]:
     """Group ``items`` into ``YYYY-Www`` buckets by their epoch timestamp."""
     buckets: dict[str, list[Any]] = defaultdict(list)
     for item in items:
@@ -158,12 +166,19 @@ def cycle_time_stats(deltas_minutes: Sequence[float]) -> dict[str, Any]:
     """
     count = len(deltas_minutes)
     if count == 0:
-        return {"samples": 0, "avg_hours": None, "p75_hours": None, "stddev_hours": None}
+        return {
+            "samples": 0,
+            "avg_hours": None,
+            "p75_hours": None,
+            "stddev_hours": None,
+        }
     return {
         "samples": count,
         "avg_hours": _hours(sum(deltas_minutes) / count),
         "p75_hours": _hours(percentile(deltas_minutes, 0.75)),
-        "stddev_hours": _hours(stdev(deltas_minutes)) if count >= MIN_STDDEV_SAMPLES else None,
+        "stddev_hours": _hours(stdev(deltas_minutes))
+        if count >= MIN_STDDEV_SAMPLES
+        else None,
     }
 
 
@@ -267,7 +282,10 @@ def commit_volume_csv(series: Sequence[dict[str, Any]]) -> str:
 
 def cycle_time_csv(series: Sequence[dict[str, Any]]) -> str:
     """Cycle-time columns, carrying ``commits`` so a week's weight is visible here too."""
-    rows = [{**{k: row[k] for k in (*WEEK_COLUMNS, "commits")}, **row["cycle_time"]} for row in series]
+    rows = [
+        {**{k: row[k] for k in (*WEEK_COLUMNS, "commits")}, **row["cycle_time"]}
+        for row in series
+    ]
     return _to_csv(CYCLE_TIME_COLUMNS, rows)
 
 
