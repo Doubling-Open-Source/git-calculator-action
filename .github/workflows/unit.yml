@@ -26,6 +26,12 @@ jobs:
       - name: Install test deps
         run: pip install -r requirements-dev.txt
 
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
+
       - name: Run Action unit tests
         run: PYTHONPATH=. pytest tests -q --junitxml=junit.xml
 

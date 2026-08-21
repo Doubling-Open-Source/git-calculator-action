@@ -48,13 +48,17 @@ def test_squash_merge_alias_canonicalizes_to_engine_squash() -> None:
     assert resolve_work_style("squash-merge") == "squash"
 
 
-def test_named_default_branch_that_does_not_resolve_fails_closed(tmp_path: Path) -> None:
+def test_named_default_branch_that_does_not_resolve_fails_closed(
+    tmp_path: Path,
+) -> None:
     repo, _, _ = _two_branch_repo(tmp_path)
     with pytest.raises(RuntimeError, match="does not resolve to a commit"):
         resolve_scope(repo, work_style="squash-merge", default_branch="does-not-exist")
 
 
-def test_all_branches_keeps_every_commit_squash_merge_drops_unreachable(tmp_path: Path) -> None:
+def test_all_branches_keeps_every_commit_squash_merge_drops_unreachable(
+    tmp_path: Path,
+) -> None:
     repo, on_main, on_feature = _two_branch_repo(tmp_path)
     commits = [_Commit(on_main), _Commit(on_feature)]
     kept_all = scope_commits(

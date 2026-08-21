@@ -91,13 +91,21 @@ def build_payload(
             "fix_commits": fix_commits,
             # Work-volume signal: a commits total means little without knowing
             # how many weeks it is spread across.
-            "commits_per_active_week": round(commits / len(active), 1) if active else None,
-            "busiest_week": max(active, key=lambda row: row["commits"])["week"] if active else None,
+            "commits_per_active_week": round(commits / len(active), 1)
+            if active
+            else None,
+            "busiest_week": max(active, key=lambda row: row["commits"])["week"]
+            if active
+            else None,
             # Pooled over the window, not the mean of weekly rates -- a
             # 40-commit week and a 2-commit week must not count equally.
-            "change_failure_rate_pct": round(fix_commits / commits * 100, 1) if commits else None,
+            "change_failure_rate_pct": round(fix_commits / commits * 100, 1)
+            if commits
+            else None,
             "cycle_time_p75_hours": _pooled_cycle_time_p75_hours(cycle_time_minutes),
-            "weeks_without_commits": [row["week"] for row in series if row["commits"] == 0],
+            "weeks_without_commits": [
+                row["week"] for row in series if row["commits"] == 0
+            ],
             "small_n_weeks": [row["week"] for row in series if row["small_n"]],
             # Whether the newest row is a finished week is the first thing a
             # reader needs, because it decides if the last point on every chart
@@ -117,8 +125,16 @@ def build_payload(
                 title="Commit volume by week",
                 y_label="Commits",
                 plots=[
-                    {"label": "Commits", "kind": "bar", "value": lambda row: row["commits"]},
-                    {"label": "Fix commits", "kind": "line", "value": lambda row: row["fix_commits"]},
+                    {
+                        "label": "Commits",
+                        "kind": "bar",
+                        "value": lambda row: row["commits"],
+                    },
+                    {
+                        "label": "Fix commits",
+                        "kind": "line",
+                        "value": lambda row: row["fix_commits"],
+                    },
                 ],
             ),
             _chart(

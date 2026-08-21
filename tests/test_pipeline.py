@@ -29,9 +29,13 @@ def _git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, check=True
+    )
     subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "--allow-empty", "-m", "on main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "on main"], cwd=repo, check=True
+    )
     return repo
 
 
@@ -86,6 +90,8 @@ def test_pipeline_records_canonical_squash_for_both_work_style_inputs(
     tmp_path: Path, work_style: str
 ) -> None:
     _run(tmp_path, repo=_git_repo(tmp_path), work_style=work_style)
-    metadata = json.loads((tmp_path / "out" / "window_metadata.json").read_text(encoding="utf-8"))
+    metadata = json.loads(
+        (tmp_path / "out" / "window_metadata.json").read_text(encoding="utf-8")
+    )
     assert metadata["work_style"] == "squash"
     assert metadata["scoped_ref"]

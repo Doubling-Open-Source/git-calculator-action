@@ -49,12 +49,16 @@ def post_summary(
     """Return (status, response headers, parsed JSON or raw text)."""
     require_https_url(url)
     endpoint = f"{url.rstrip('/')}/v1/reports"
-    payload = json.dumps({"reportType": "summary", "repo": repo, "data": metrics}).encode("utf-8")
+    payload = json.dumps(
+        {"reportType": "summary", "repo": repo, "data": metrics}
+    ).encode("utf-8")
     headers = {
         "content-type": "application/json",
         "x-api-key": api_key,
     }
-    request = urllib.request.Request(endpoint, data=payload, headers=headers, method="POST")
+    request = urllib.request.Request(
+        endpoint, data=payload, headers=headers, method="POST"
+    )
     opener = urllib.request.build_opener(_NoRedirectHandler)
     try:
         with opener.open(request, timeout=60) as response:
@@ -67,7 +71,9 @@ def post_summary(
             return response.status, header_map, parsed
     except urllib.error.HTTPError as err:
         body = err.read().decode("utf-8") if err.fp else ""
-        header_map = {k.lower(): v for k, v in err.headers.items()} if err.headers else {}
+        header_map = (
+            {k.lower(): v for k, v in err.headers.items()} if err.headers else {}
+        )
         try:
             parsed = json.loads(body) if body else {}
         except json.JSONDecodeError:
@@ -75,7 +81,9 @@ def post_summary(
         return err.code, header_map, parsed
 
 
-def write_markdown(markdown: str, *, out_file: Path | None, step_summary: Path | None) -> None:
+def write_markdown(
+    markdown: str, *, out_file: Path | None, step_summary: Path | None
+) -> None:
     if out_file is not None:
         out_file.write_text(markdown, encoding="utf-8")
     if step_summary is not None:
@@ -86,7 +94,9 @@ def write_markdown(markdown: str, *, out_file: Path | None, step_summary: Path |
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="POST weekly_metrics.json to the Reports API")
+    parser = argparse.ArgumentParser(
+        description="POST weekly_metrics.json to the Reports API"
+    )
     parser.add_argument("--url", required=True, help="Reports API base URL")
     parser.add_argument(
         "--check-url",
@@ -107,7 +117,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_url:
         return 0
     if args.key_file is None or args.repo is None or args.metrics_file is None:
-        print("error: --key-file, --repo, and --metrics-file are required", file=sys.stderr)
+        print(
+            "error: --key-file, --repo, and --metrics-file are required",
+            file=sys.stderr,
+        )
         return 1
 
     api_key = _read_secret_file(args.key_file)
@@ -142,8 +155,16 @@ def main(argv: list[str] | None = None) -> int:
         print("error: Reports API 200 response missing markdown", file=sys.stderr)
         return 1
 
-    step_summary = Path(os.environ["GITHUB_STEP_SUMMARY"]) if os.environ.get("GITHUB_STEP_SUMMARY") else None
-    write_markdown(_redact(parsed["markdown"], secrets), out_file=args.out_file, step_summary=step_summary)
+    step_summary = (
+        Path(os.environ["GITHUB_STEP_SUMMARY"])
+        if os.environ.get("GITHUB_STEP_SUMMARY")
+        else None
+    )
+    write_markdown(
+        _redact(parsed["markdown"], secrets),
+        out_file=args.out_file,
+        step_summary=step_summary,
+    )
     print("Posted weekly_metrics.json; wrote Reports API markdown to the job summary")
     return 0
 

@@ -31,7 +31,9 @@ _THREE_WEEK_WINDOW = {
 class _Commit(str):
     _next = 0
 
-    def __new__(cls, when: float, message: str = "chore: work", sha: str | None = None) -> "_Commit":
+    def __new__(
+        cls, when: float, message: str = "chore: work", sha: str | None = None
+    ) -> "_Commit":
         if sha is None:
             _Commit._next += 1
             sha = f"{_Commit._next:040x}"
@@ -84,11 +86,19 @@ def _mock_calculator(monkeypatch, *, commits, deltas) -> dict[str, Any]:
         key: round(fixes / total * 100, 1) if total else 0
         for key, (total, fixes) in data.items()
     }
-    monkeypatch.setitem(sys.modules, "git_calculator", types.ModuleType("git_calculator"))
+    monkeypatch.setitem(
+        sys.modules, "git_calculator", types.ModuleType("git_calculator")
+    )
     monkeypatch.setitem(sys.modules, "git_calculator.git_ir", git_ir)
-    monkeypatch.setitem(sys.modules, "git_calculator.util", types.ModuleType("git_calculator.util"))
+    monkeypatch.setitem(
+        sys.modules, "git_calculator.util", types.ModuleType("git_calculator.util")
+    )
     monkeypatch.setitem(sys.modules, "git_calculator.util.git_util", util)
-    monkeypatch.setitem(sys.modules, "git_calculator.calculators", types.ModuleType("git_calculator.calculators"))
+    monkeypatch.setitem(
+        sys.modules,
+        "git_calculator.calculators",
+        types.ModuleType("git_calculator.calculators"),
+    )
     monkeypatch.setitem(sys.modules, "git_calculator.calculators.sqlite_lake", lake_mod)
     monkeypatch.setitem(
         sys.modules,
@@ -149,7 +159,9 @@ def _two_branch_repo(tmp_path: Path) -> tuple[Path, str, str]:
     return repo, on_main, on_feature
 
 
-def test_runner_writes_the_standardized_bundle_that_passes_the_gate(monkeypatch, tmp_path: Path) -> None:
+def test_runner_writes_the_standardized_bundle_that_passes_the_gate(
+    monkeypatch, tmp_path: Path
+) -> None:
     commits = [
         _Commit(_epoch(2026, 6, 30, 10, 0), "fix: patch"),
         _Commit(_epoch(2026, 7, 15, 12, 0), "feat: later"),
@@ -173,7 +185,9 @@ def test_runner_writes_the_standardized_bundle_that_passes_the_gate(monkeypatch,
     gate_output_dir(out, ALLOWLIST)
 
 
-def test_key_free_run_removes_stale_weekly_metrics_json(monkeypatch, tmp_path: Path) -> None:
+def test_key_free_run_removes_stale_weekly_metrics_json(
+    monkeypatch, tmp_path: Path
+) -> None:
     stale = tmp_path / "out" / "weekly_metrics.json"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.write_text("{}\n", encoding="utf-8")
@@ -188,10 +202,14 @@ def test_key_free_run_removes_stale_weekly_metrics_json(monkeypatch, tmp_path: P
     gate_output_dir(out, ALLOWLIST)
 
 
-def test_commit_volume_error_is_the_error_commit_count(monkeypatch, tmp_path: Path) -> None:
+def test_commit_volume_error_is_the_error_commit_count(
+    monkeypatch, tmp_path: Path
+) -> None:
     # Nine commits, one error: Poisson sqrt(9) is 3, so the two meanings
     # disagree. The CSV must emit the error-commit count.
-    commits = [_Commit(_epoch(2026, 6, 30, 10, minute), "feat: work") for minute in range(8)]
+    commits = [
+        _Commit(_epoch(2026, 6, 30, 10, minute), "feat: work") for minute in range(8)
+    ]
     commits.append(_Commit(_epoch(2026, 6, 30, 11, 0), "fix: patch"))
     out, _ = _run(
         monkeypatch,
@@ -205,7 +223,9 @@ def test_commit_volume_error_is_the_error_commit_count(monkeypatch, tmp_path: Pa
     assert busy["error"] == "1"
 
 
-def test_runner_excludes_commits_outside_the_window(monkeypatch, tmp_path: Path) -> None:
+def test_runner_excludes_commits_outside_the_window(
+    monkeypatch, tmp_path: Path
+) -> None:
     commits = [
         _Commit(_epoch(2026, 6, 30, 10, 0), "fix: in"),
         _Commit(_epoch(2026, 8, 1, 12, 0), "feat: after"),
@@ -248,7 +268,9 @@ def test_squash_styles_are_applied_before_cycle_time_deltas(
     assert [sha[:] for sha in calls["delta_logs"]] == [on_main]
 
 
-def test_squash_classifies_from_the_commit_summary_only(monkeypatch, tmp_path: Path) -> None:
+def test_squash_classifies_from_the_commit_summary_only(
+    monkeypatch, tmp_path: Path
+) -> None:
     commits = [
         _Commit(
             _epoch(2026, 6, 30, 10, 0),
@@ -266,7 +288,9 @@ def test_squash_classifies_from_the_commit_summary_only(monkeypatch, tmp_path: P
     assert calls["classified_text"] == ["feat: login"]
 
 
-def test_all_branches_classifies_from_the_full_message(monkeypatch, tmp_path: Path) -> None:
+def test_all_branches_classifies_from_the_full_message(
+    monkeypatch, tmp_path: Path
+) -> None:
     commits = [
         _Commit(
             _epoch(2026, 6, 30, 10, 0),
@@ -281,10 +305,14 @@ def test_all_branches_classifies_from_the_full_message(monkeypatch, tmp_path: Pa
         window=_THREE_WEEK_WINDOW,
         scope={"work_style": "all-branches", "scoped_ref": None},
     )
-    assert calls["classified_text"] == ["feat: login\n\nfix leftover from stacked commits"]
+    assert calls["classified_text"] == [
+        "feat: login\n\nfix leftover from stacked commits"
+    ]
 
 
-def test_silent_week_does_not_invent_a_change_failure_rate(monkeypatch, tmp_path: Path) -> None:
+def test_silent_week_does_not_invent_a_change_failure_rate(
+    monkeypatch, tmp_path: Path
+) -> None:
     commits = [
         _Commit(_epoch(2026, 6, 30, 10, 0), "feat: first week"),
         _Commit(_epoch(2026, 7, 15, 12, 0), "feat: third week"),
@@ -318,7 +346,9 @@ def test_one_commit_week_is_flagged_small_n(monkeypatch, tmp_path: Path) -> None
     assert thin["small_n"] is True
 
 
-def test_payload_declares_grain_and_does_not_embed_the_pin(monkeypatch, tmp_path: Path) -> None:
+def test_payload_declares_grain_and_does_not_embed_the_pin(
+    monkeypatch, tmp_path: Path
+) -> None:
     commits = [_Commit(_epoch(2026, 6, 30, 10, 0), "feat: work")]
     out, _ = _run(
         monkeypatch,
@@ -335,6 +365,11 @@ def test_payload_declares_grain_and_does_not_embed_the_pin(monkeypatch, tmp_path
 
 
 def test_full_history_with_no_commits_fails_closed(monkeypatch, tmp_path: Path) -> None:
-    window = {"timezone": "UTC", "mode": "full_history", "grain": "iso_week", "generated_at": "2026-08-06T00:00:00Z"}
+    window = {
+        "timezone": "UTC",
+        "mode": "full_history",
+        "grain": "iso_week",
+        "generated_at": "2026-08-06T00:00:00Z",
+    }
     with pytest.raises(RuntimeError):
         _run(monkeypatch, tmp_path, commits=[], deltas=[], window=window)

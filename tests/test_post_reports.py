@@ -74,7 +74,9 @@ def _wrap_tls(server: ThreadingHTTPServer, cert: Path, key: Path) -> None:
 
 @pytest.fixture
 def https_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(ssl, "_create_default_https_context", ssl._create_unverified_context)
+    monkeypatch.setattr(
+        ssl, "_create_default_https_context", ssl._create_unverified_context
+    )
     cert, key = _self_signed_cert(tmp_path)
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     _wrap_tls(server, cert, key)
@@ -259,13 +261,18 @@ def test_response_markdown_does_not_write_the_api_key_to_outputs(
         ]
     )
     assert code == 0
-    for text in (out_file.read_text(encoding="utf-8"), step_summary.read_text(encoding="utf-8")):
+    for text in (
+        out_file.read_text(encoding="utf-8"),
+        step_summary.read_text(encoding="utf-8"),
+    ):
         assert api_key not in text
         assert "[redacted]" in text
 
 
 @contextmanager
-def _cross_origin_redirect(tmp_path: Path) -> Iterator[tuple[str, list[dict[str, str | None]]]]:
+def _cross_origin_redirect(
+    tmp_path: Path,
+) -> Iterator[tuple[str, list[dict[str, str | None]]]]:
     second_hits: list[dict[str, str | None]] = []
     cert, key = _self_signed_cert(tmp_path)
 
@@ -327,7 +334,9 @@ def _cross_origin_redirect(tmp_path: Path) -> Iterator[tuple[str, list[dict[str,
 def test_credentialed_post_does_not_follow_redirects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(ssl, "_create_default_https_context", ssl._create_unverified_context)
+    monkeypatch.setattr(
+        ssl, "_create_default_https_context", ssl._create_unverified_context
+    )
     key_file = tmp_path / "key"
     key_file.write_text("super-secret-key", encoding="utf-8")
     metrics_file = tmp_path / "weekly_metrics.json"

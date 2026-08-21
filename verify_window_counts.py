@@ -170,7 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        metadata = json.loads((args.output_dir / "window_metadata.json").read_text(encoding="utf-8"))
+        metadata = json.loads(
+            (args.output_dir / "window_metadata.json").read_text(encoding="utf-8")
+        )
         since, until = load_window_bounds(metadata)
         csv_path = args.output_dir / "commit_volume.csv"
         csv_total = sum_weekly_commits(csv_path)
@@ -181,13 +183,20 @@ def main(argv: list[str] | None = None) -> int:
         remote_total = count_commits(
             repo=args.repo, since=since, until=until, selector=selector
         )
-    except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        ValueError,
+        subprocess.CalledProcessError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"verify-remote-counts: error: {exc}", file=sys.stderr)
         return 1
 
     counted = " ".join(selector)
     print(f"window: [{since}, {until})")
-    print(f"work style: {metadata.get('work_style', ALL_BRANCHES)} (counting {counted})")
+    print(
+        f"work style: {metadata.get('work_style', ALL_BRANCHES)} (counting {counted})"
+    )
     print(f"commit_volume.csv commits sum: {csv_total}")
     print(f"git rev-list {counted} count: {remote_total}")
 
